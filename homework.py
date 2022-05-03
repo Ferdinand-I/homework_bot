@@ -3,7 +3,6 @@ import os
 import sys
 import time
 from logging import StreamHandler
-from typing import Optional
 
 import requests
 import telegram
@@ -49,8 +48,11 @@ HOMEWORK_STATUSES = {
 
 bot_for_sendings_error = telegram.Bot(token=TELEGRAM_TOKEN)
 
+API_ERROR_MESSAGE_COUNT = 0
+
 
 def send_message(bot, message):
+    """Bot message sender."""
     try:
         bot.send_message(
             chat_id=TELEGRAM_CHAT_ID,
@@ -58,27 +60,29 @@ def send_message(bot, message):
         )
         logger.info('Message is sent successfully!')
     except Exception as error:
-        logger.error(f'Message is not sent: {error}')
+        logger.error(f'Message cannot sent: {error}')
 
 
 def get_api_answer(current_timestamp: int) -> dict:
+    """Checks api answer and get needed data after."""
     timestamp = current_timestamp
     params = {'from_date': timestamp}
-    error_message_count = 0
     response = requests.get(
-            url=ENDPOINT,
-            headers=HEADERS,
-            params=params
-        )
+        url=ENDPOINT,
+        headers=HEADERS,
+        params=params
+    )
     if response.status_code != 200:
-        error_message_count += 1
-        logger.error('Cannot access to api.')
-        if error_message_count == 1:
+        global API_ERROR_MESSAGE_COUNT
+        API_ERROR_MESSAGE_COUNT += 1
+        if API_ERROR_MESSAGE_COUNT == 1:
+            logger.error('Cannot access to api.')
             send_message(
                 bot_for_sendings_error,
                 message='Error message: Cannot access to api.'
             )
         raise ValueError
+    API_ERROR_MESSAGE_COUNT = 0
     try:
         response.json()
     except Exception as error:
@@ -86,7 +90,8 @@ def get_api_answer(current_timestamp: int) -> dict:
     return response.json()
 
 
-def check_response(response: dict) -> Optional[list]:
+def check_response(response: dict) -> list:
+    """Checks if api answer is correct."""
     try:
         response['homeworks']
     except Exception as error:
@@ -99,6 +104,10 @@ def check_response(response: dict) -> Optional[list]:
 
 
 def parse_status(homework: dict) -> str:
+    """Checks that data after api answer is valid.
+    And figures out the condition of 'status' parameter
+    if it is clearly found.
+    """
     try:
         homework['homework_name']
     except Exception as e:
@@ -123,38 +132,35 @@ def parse_status(homework: dict) -> str:
 
 
 def check_tokens() -> bool:
-    """Checks tokens are accurately placed and work clearly."""
+    """Checks tokens are accurately placed and flags if opposite."""
     if PRACTICUM_TOKEN and TELEGRAM_TOKEN and TELEGRAM_CHAT_ID:
         return True
     return False
 
 
 def main():
-    """Основная логика работы бота."""
+    """The bot's main logic."""
+    token_error_name = (
+        'Some tokens or all of them are missed! '
+        'Check that you have specified tokens!'
+    )
     if check_tokens() is False:
-        error = (
-            'Some tokens or all of them are missed! '
-            'Check that you have specified tokens!'
-        )
         logger.critical(
-            msg=error
+            msg=token_error_name
         )
         bot = telegram.Bot(token=TELEGRAM_TOKEN)
-        try:
-            send_message(bot, error)
-        except Exception as e:
-            logger.critical(
-                f'Bot cannot send a message with an error message. '
-                f'Check telegram tokens carefully! {e}'
-            )
+        send_message(bot, token_error_name)
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     current_timestamp = int(time.time())
     no_update_count = 0
+    body_error_count = 0
     while True:
         try:
             response = get_api_answer(current_timestamp - TIME_SIGNATURE_UNIX)
             lst_of_upadate = check_response(response)
             if len(lst_of_upadate) > 0:
+                no_update_count = 0
+                body_error_count = 0
                 send_message(bot, parse_status(lst_of_upadate[0]))
             else:
                 no_update_count += 1
@@ -162,12 +168,14 @@ def main():
                     send_message(bot, 'There is no updates yet!')
             time.sleep(RETRY_TIME)
         except Exception as error:
-            message = f'Сбой в работе программы: {error}'
-            try:
-                send_message(bot, message)
-            except Exception as e:
-                logger.error(f'Bot cannot send an error message. {e}')
-            time.sleep(RETRY_TIME)
+            body_error_count += 1
+            message = f'Сбой в работе программы! {error}'
+            if body_error_count == 1:
+                try:
+                    send_message(bot, message)
+                except Exception as e:
+                    logger.error(f'Bot cannot send an error message. {e}')
+                time.sleep(RETRY_TIME)
         else:
             pass
 
