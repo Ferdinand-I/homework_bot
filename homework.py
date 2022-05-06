@@ -37,8 +37,8 @@ TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
 TIME_SIGNATURE_UNIX = 60 * 10
-RETRY_TIME = 60 * 10
-RETRY_TIME_AFTER_ERROR = 60
+RETRY_TIME = 10
+RETRY_TIME_AFTER_ERROR = 5
 # Добавил переменную с количеством секунд для ретрая после ошибки в main()
 ENDPOINT = 'https://practicum.yandex.ru/api/user_api/homework_statuses/'
 HEADERS = {'Authorization': f'OAuth {PRACTICUM_TOKEN}'}
@@ -77,7 +77,6 @@ def get_api_answer(current_timestamp: int) -> dict:
     """Checks api answer and get needed data after."""
     timestamp = current_timestamp
     params = {'from_date': timestamp}
-    response = None
     try:
         response = requests.get(
             url=ENDPOINT,
@@ -91,6 +90,7 @@ def get_api_answer(current_timestamp: int) -> dict:
             bot_for_sendings_error,
             message
         )
+        raise ConnectionError
     if response.status_code != HTTPStatus.OK:
         global API_ERROR_MESSAGE_COUNT
         API_ERROR_MESSAGE_COUNT += 1
@@ -113,10 +113,14 @@ def get_api_answer(current_timestamp: int) -> dict:
         logger.error(
             f'Cannon transform JSON data to python dict type: {error}'
         )
+        raise JSONDecodeError
 
 
 def check_response(response: dict) -> list:
     """Checks if api answer is correct."""
+    if response is None:
+        logger.error('API answer is not a valid.')
+        raise TypeError
     try:
         response['homeworks']
     except KeyError as e:
@@ -220,8 +224,6 @@ def main() -> None:
             if body_error_count == 1:
                 send_message(bot, message)
             time.sleep(RETRY_TIME_AFTER_ERROR)
-        else:
-            pass
 
 
 if __name__ == '__main__':
