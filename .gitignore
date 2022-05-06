@@ -148,3 +148,5 @@ dmypy.json
 static/
 posts/static/
 media/
+
+test.py
