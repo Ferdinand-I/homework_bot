@@ -36,7 +36,7 @@ source venv/Scripts/activate
 cd homework_bot
 ```
 
-3. Обновите PIP и установите зависимости **requirements.txt**
+3. Обновите **PIP** и установите зависимости **requirements.txt**
 
 ```BASH
 python -m pip install --upgrade pip
